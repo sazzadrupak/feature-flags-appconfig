@@ -1,0 +1,107 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths: ['backend/**']
+  workflow_dispatch:
+
+env:
+  CentralArtifactBucket: appconfig-central-artifact-bucket
+  MajorMinorVersion: multi-country-feature-flags-v0.1
+  ServiceName: multi-country-feature-flags-backend
+  Region: us-east-1
+  WorkingDirectory: backend
+  ApiVersion: v1
+  TemplateName: template.yaml
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    # this is required for authenticating to AWS via the OIDC Provider we set up
+    permissions:
+      id-token: write
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+
+    - name: Generate version number
+      run: |
+        ### Version number structure like <service-name>-v0.1.1
+        VERSION_NUMBER="$MajorMinorVersion.$RUN_NUMBER"
+        echo "VERSION=$VERSION_NUMBER" >> $GITHUB_ENV
+
+        if git ls-remote --exit-code --tags origin $VERSION_NUMBER ; then
+          echo "Version $VERSION_NUMBER has been built already, bybassing build phase!"
+          echo "version_exists=true" >> $GITHUB_ENV
+        else
+          echo "version_exists=false" >> $GITHUB_ENV
+        fi
+      env:
+        RUN_NUMBER: ${{ github.run_number }}
+    
+    - name: Setup AWS SAM
+      uses: aws-actions/setup-sam@v2
+      with:
+        use-installer: true
+    
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-region: us-east-1
+        role-to-assume: arn:aws:iam::115555360667:role/feature-flag-repo
+        role-session-name: GithubActionsSession
+    
+    - name: Create S3 bucket if it doesn't exist
+      run: |
+        if ! aws s3api head-bucket --bucket "${{ env.CentralArtifactBucket }}" 2>/dev/null; then
+          echo "Creating S3 bucket: ${{ env.CentralArtifactBucket }}"
+          aws s3api create-bucket --bucket "${{ env.CentralArtifactBucket }}" --region "${{ env.Region }}"
+          aws s3api put-bucket-versioning --bucket "${{ env.CentralArtifactBucket }}" --versioning-configuration Status=Enabled
+        else
+          echo "S3 bucket ${{ env.CentralArtifactBucket }} already exists"
+        fi
+    
+    - name: SAM build
+      if: env.version_exists == 'false'
+      working-directory: ${{ env.WorkingDirectory }}
+      run: |
+        sam build -t ${{ env.TemplateName || 'template.yaml' }}
+
+    - name: Output the version of this build to other jobs
+      id: set_version
+      run: |
+        echo "version_tag=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Package artifacts and publish
+      if: env.version_exists == 'false'
+      working-directory: ${{ env.WorkingDirectory }}
+      run: |
+        # Package and upload SAM artifacts
+        sam package --s3-bucket ${{ env.CentralArtifactBucket }} --s3-prefix feature-flags-api/${{ env.ServiceName }}/$VERSION --output-template-file deployment-$VERSION.yml
+        # Upload the deployment template
+        aws s3 cp deployment-$VERSION.yml s3://${{ env.CentralArtifactBucket }}/feature-flags-api/${{ env.ServiceName }}/$VERSION/deployment-$VERSION.yml
+    - name: Tag this build
+      if: env.version_exists == 'false'
+      run: |
+        git config --local user.name "GitHub Actions"
+        git config --local user.email "action@github.com"
+        git tag -a $VERSION -m "created by Github Action"
+        git push origin $VERSION
+    
+    - name: Download deployment template (if version exists)
+      if: env.version_exists == 'true'
+      working-directory: ${{ env.WorkingDirectory }}
+      run: |
+        echo "Downloading existing template"
+        aws s3 cp s3://${{ env.CentralArtifactBucket }}/feature-flags-api/${{ env.ServiceName }}/$VERSION/deployment-$VERSION.yml ./deployment-$VERSION.yml
+    
+    - name: SAM deploy
+      working-directory: ${{ env.WorkingDirectory }}
+      run: |
+        sam deploy --template-file deployment-$VERSION.yml --no-confirm-changeset --no-fail-on-empty-changeset --parameter-overrides Environment=prod --stack-name ${{ env.ServiceName }} --capabilities CAPABILITY_NAMED_IAM

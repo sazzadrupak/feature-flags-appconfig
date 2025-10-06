@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Feature Flags AppConfig Setup
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  # AppConfig Application
+  FeatureFlagsApplication:
+    Type: AWS::AppConfig::Application
+    Properties:
+      Name: !Sub "feature-flags-${Environment}"
+      Description: Feature flags for country-specific configurations
+
+  # AppConfig Environment
+  FeatureFlagsEnvironment:
+    Type: AWS::AppConfig::Environment
+    Properties:
+      ApplicationId: !Ref FeatureFlagsApplication
+      Name: !Ref Environment
+      Description: !Sub "Environment for ${Environment}"
+
+  # AppConfig Configuration Profile
+  FeatureFlagsConfigProfile:
+    Type: AWS::AppConfig::ConfigurationProfile
+    Properties:
+      ApplicationId: !Ref FeatureFlagsApplication
+      Name: country-feature-flags
+      LocationUri: hosted
+      Type: AWS.AppConfig.FeatureFlags
+
+  # Initial configuration version with valid feature flags schema
+  InitialConfigVersion:
+    Type: AWS::AppConfig::HostedConfigurationVersion
+    Properties:
+      ApplicationId: !Ref FeatureFlagsApplication
+      ConfigurationProfileId: !Ref FeatureFlagsConfigProfile
+      ContentType: application/json
+      Content: |
+        {
+          "flags": {},
+          "values": {},
+          "version": "1"
+        }
+
+  # Deployment Strategy
+  ImmediateDeploymentStrategy:
+    Type: AWS::AppConfig::DeploymentStrategy
+    Properties:
+      Name: !Sub "immediate-${Environment}"
+      Description: Immediate deployment for feature flags
+      DeploymentDurationInMinutes: 0
+      FinalBakeTimeInMinutes: 0
+      GrowthFactor: 100
+      GrowthType: LINEAR
+      ReplicateTo: NONE
+
+  # Initial Deployment
+  InitialDeployment:
+    Type: AWS::AppConfig::Deployment
+    Properties:
+      ApplicationId: !Ref FeatureFlagsApplication
+      ConfigurationProfileId: !Ref FeatureFlagsConfigProfile
+      ConfigurationVersion: !Ref InitialConfigVersion
+      DeploymentStrategyId: !Ref ImmediateDeploymentStrategy
+      EnvironmentId: !Ref FeatureFlagsEnvironment
+
+Outputs:
+  ApplicationId:
+    Description: AppConfig Application ID
+    Value: !Ref FeatureFlagsApplication
+    Export:
+      Name: !Sub "${AWS::StackName}-ApplicationId"
+  
+  EnvironmentId:
+    Description: AppConfig Environment ID
+    Value: !Ref FeatureFlagsEnvironment
+    Export:
+      Name: !Sub "${AWS::StackName}-EnvironmentId"
+  
+  ConfigurationProfileId:
+    Description: AppConfig Configuration Profile ID
+    Value: !Ref FeatureFlagsConfigProfile
+    Export:
+      Name: !Sub "${AWS::StackName}-ConfigurationProfileId"
