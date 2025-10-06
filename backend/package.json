@@ -1,0 +1,20 @@
+{
+  "name": "appconfig-backend",
+  "version": "1.0.0",
+  "description": "AWS AppConfig Multi-Country Backend",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "build": "sam build",
+    "deploy": "sam deploy --guided"
+  },
+  "dependencies": {
+    "@aws-sdk/client-appconfig": "^3.0.0",
+    "@aws-sdk/client-appconfigdata": "^3.0.0",
+    "@aws-sdk/client-dynamodb": "^3.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0"
+  }
+}
