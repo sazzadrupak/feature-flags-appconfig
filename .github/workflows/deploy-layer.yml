@@ -2,20 +2,20 @@ name: Deploy Lambda Layer
 
 on:
   workflow_dispatch:
-    # inputs:
-    #   environment:
-    #     description: 'Environment to deploy to'
-    #     required: true
-    #     default: 'dev'
-    #     type: choice
-    #     options:
-    #       - dev
-    #       - staging
-    #       - prod
-    #   version_tag:
-    #     description: 'Version tag for the layer (e.g., v1.2.3)'
-    #     required: false
-    #     default: ''
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      version_tag:
+        description: 'Version tag for the layer (e.g., v1.2.3)'
+        required: false
+        default: ''
   push:
     branches: [main]
     paths:
