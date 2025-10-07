@@ -1,6 +1,21 @@
 name: Deploy Lambda Layer
 
 on:
+  workflow_dispatch:
+    # inputs:
+    #   environment:
+    #     description: 'Environment to deploy to'
+    #     required: true
+    #     default: 'dev'
+    #     type: choice
+    #     options:
+    #       - dev
+    #       - staging
+    #       - prod
+    #   version_tag:
+    #     description: 'Version tag for the layer (e.g., v1.2.3)'
+    #     required: false
+    #     default: ''
   push:
     branches: [main]
     paths:
@@ -9,25 +24,10 @@ on:
   #   branches: [main]
   #   paths:
   #     - 'lambda-layer/**'
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'dev'
-        type: choice
-        options:
-          - dev
-          - staging
-          - prod
-      version_tag:
-        description: 'Version tag for the layer (e.g., v1.2.3)'
-        required: false
-        default: ''
 
 env:
   CentralArtifactBucket: appconfig-central-artifact-bucket
-  MajorMinorVersion: multi-country-feature-flags-v0.1
+  MajorMinorVersion: multi-country-feature-flags-layer-v0.1
   ServiceName: multi-country-feature-flags-lambda-layer
   Region: us-east-1
   WorkingDirectory: lambda-layer
@@ -134,7 +134,7 @@ jobs:
         id: set_version
         run: |
           echo "version_tag=$VERSION" >> $GITHUB_OUTPUT
-      
+
       - name: Package artifacts and publish
         working-directory: ${{ env.WorkingDirectory }}
         run: |

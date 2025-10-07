@@ -108,6 +108,8 @@ Resources:
       CodeUri: dist/
       Handler: handlers/getFeatureFlags.handler
       Runtime: nodejs18.x
+      Timeout: 30
+      MemorySize: 256
       Role: !GetAtt LambdaExecutionRole.Arn
       Layers: !If
         - UseLayer
@@ -118,6 +120,8 @@ Resources:
           APPLICATION_ID: !Ref FeatureFlagsApplication
           ENVIRONMENT_ID: !Ref FeatureFlagsEnvironment
           CONFIGURATION_PROFILE_ID: !Ref FeatureFlagsConfigProfile
+          NODE_OPTIONS: '--enable-source-maps'
+          LOG_LEVEL: DEBUG
       Events:
         GetFeatureFlags:
           Type: Api
@@ -133,6 +137,8 @@ Resources:
       CodeUri: dist/
       Handler: handlers/updateFeatureFlags.handler
       Runtime: nodejs18.x
+      Timeout: 30
+      MemorySize: 256
       Role: !GetAtt LambdaExecutionRole.Arn
       Layers: !If
         - UseLayer
@@ -144,6 +150,8 @@ Resources:
           ENVIRONMENT_ID: !Ref FeatureFlagsEnvironment
           CONFIGURATION_PROFILE_ID: !Ref FeatureFlagsConfigProfile
           DEPLOYMENT_STRATEGY_ID: !Ref ImmediateDeploymentStrategy
+          NODE_OPTIONS: '--enable-source-maps'
+          LOG_LEVEL: DEBUG
       Events:
         UpdateFeatureFlags:
           Type: Api
@@ -151,6 +159,28 @@ Resources:
             RestApiId: !Ref FeatureFlagsApi
             Path: /feature-flags/{country}
             Method: post
+
+  # Debug Lambda (temporary for troubleshooting)
+  DebugFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: handlers/debug.handler
+      Runtime: nodejs18.x
+      Timeout: 30
+      MemorySize: 256
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Layers: !If
+        - UseLayer
+        - [!Ref LayerArn]
+        - !Ref 'AWS::NoValue'
+      Events:
+        Debug:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeatureFlagsApi
+            Path: /debug
+            Method: get
 
   # API Gateway
   FeatureFlagsApi:
