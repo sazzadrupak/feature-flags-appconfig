@@ -23,8 +23,28 @@ export const handler = async (
     const modulePaths = [
       '/var/task/node_modules',
       '/opt/nodejs/node_modules',
+      '/opt/node_modules',
       '/var/runtime/node_modules',
     ];
+
+    // Also check if layer directory exists
+    const layerPaths = ['/opt', '/opt/nodejs'];
+    for (const layerPath of layerPaths) {
+      try {
+        if (fs.existsSync(layerPath)) {
+          debugInfo.layerPaths.push({
+            path: layerPath,
+            exists: true,
+            contents: fs.readdirSync(layerPath),
+          });
+        }
+      } catch (error) {
+        debugInfo.layerPaths.push({
+          path: layerPath,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
 
     for (const modulePath of modulePaths) {
       try {

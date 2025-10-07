@@ -47,8 +47,8 @@ jobs:
       matrix:
         include:
           - environment: dev
-            # Dev environment - latest layer version for development
-            layer_arn: arn:aws:lambda:us-east-1:115555360667:layer:feature-flags-deps-dev:9
+            # Dev environment - latest layer version for development  
+            layer_arn: "" # Will be fetched dynamically
           # - environment: staging  
           #   # Staging environment - stable tested layer version
           #   layer_arn: arn:aws:lambda:us-east-1:115555360667:layer:feature-flags-deps-staging:2
@@ -160,26 +160,21 @@ jobs:
       - name: Set Layer ARN
         working-directory: ${{ env.WorkingDirectory }}
         run: |
-          # Priority order: 1) Manual input, 2) Downloaded artifact, 3) Matrix configuration
+          # Get layer ARN from layer stack
+          LAYER_ARN=$(aws cloudformation describe-stacks \
+            --stack-name multi-country-feature-flags-lambda-layer-${{ matrix.environment }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`LayerArn`].OutputValue' \
+            --output text \
+            --region ${{ env.Region }} 2>/dev/null || echo "")
           
-          if [ -n "${{ github.event.inputs.layer_version }}" ]; then
-            # Extract layer name from matrix configuration and use manual version
-            MATRIX_LAYER_ARN="${{ matrix.layer_arn }}"
-            LAYER_NAME=$(echo "$MATRIX_LAYER_ARN" | sed 's/:layer:\([^:]*\):.*/\1/')
-            LAYER_ARN="arn:aws:lambda:${{ env.Region }}:$(aws sts get-caller-identity --query Account --output text):layer:${LAYER_NAME}:${{ github.event.inputs.layer_version }}"
-            echo "🔄 Using manual layer version: $LAYER_ARN"
-          elif [ "${{ steps.check-layer-info.outputs.layer_info_exists }}" == "true" ]; then
-            # Use layer ARN from downloaded artifact
-            LAYER_ARN="${{ steps.check-layer-info.outputs.downloaded_layer_arn }}"
-            echo "📥 Using layer ARN from artifact: $LAYER_ARN"
+          if [ -n "$LAYER_ARN" ]; then
+            echo "✅ Found layer ARN: $LAYER_ARN"
           else
-            # Fallback to matrix configuration
-            LAYER_ARN="${{ matrix.layer_arn }}"
-            echo "📌 Using matrix configuration layer ARN: $LAYER_ARN"
+            echo "❌ No layer found. Deploy layer first!"
+            exit 1
           fi
           
           echo "LAYER_ARN=$LAYER_ARN" >> $GITHUB_ENV
-          echo "✅ Final Layer ARN: $LAYER_ARN"
 
       - name: SAM Build
         working-directory: ${{ env.WorkingDirectory }}
