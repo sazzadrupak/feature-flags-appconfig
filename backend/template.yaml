@@ -69,6 +69,84 @@ Resources:
       DeploymentStrategyId: !Ref ImmediateDeploymentStrategy
       EnvironmentId: !Ref FeatureFlagsEnvironment
 
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: AppConfigAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appconfig:GetConfiguration
+                  - appconfig:CreateHostedConfigurationVersion
+                  - appconfig:StartDeployment
+                Resource: '*'
+
+  # Get Feature Flags Lambda
+  GetFeatureFlagsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/handlers/
+      Handler: getFeatureFlags.handler
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          APPLICATION_ID: !Ref FeatureFlagsApplication
+          ENVIRONMENT_ID: !Ref FeatureFlagsEnvironment
+          CONFIGURATION_PROFILE_ID: !Ref FeatureFlagsConfigProfile
+      Events:
+        GetFeatureFlags:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeatureFlagsApi
+            Path: /feature-flags/{country}
+            Method: get
+
+  # Update Feature Flags Lambda
+  UpdateFeatureFlagsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/handlers/
+      Handler: updateFeatureFlags.handler
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          APPLICATION_ID: !Ref FeatureFlagsApplication
+          ENVIRONMENT_ID: !Ref FeatureFlagsEnvironment
+          CONFIGURATION_PROFILE_ID: !Ref FeatureFlagsConfigProfile
+          DEPLOYMENT_STRATEGY_ID: !Ref ImmediateDeploymentStrategy
+      Events:
+        UpdateFeatureFlags:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeatureFlagsApi
+            Path: /feature-flags/{country}
+            Method: post
+
+  # API Gateway
+  FeatureFlagsApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+
 Outputs:
   ApplicationId:
     Description: AppConfig Application ID
@@ -87,3 +165,9 @@ Outputs:
     Value: !Ref FeatureFlagsConfigProfile
     Export:
       Name: !Sub "${AWS::StackName}-ConfigurationProfileId"
+  
+  ApiGatewayUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${FeatureFlagsApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiUrl"

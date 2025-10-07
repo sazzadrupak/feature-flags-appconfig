@@ -67,6 +67,18 @@ jobs:
           echo "S3 bucket ${{ env.CentralArtifactBucket }} already exists"
         fi
     
+    - name: Install dependencies
+      if: env.version_exists == 'false'
+      working-directory: ${{ env.WorkingDirectory }}
+      run: |
+        npm install
+        npm run lint
+    - name: Build TypeScript
+      if: env.version_exists == 'false'
+      working-directory: ${{ env.WorkingDirectory }}
+      run: |
+        npm run build
+    
     - name: SAM build
       if: env.version_exists == 'false'
       working-directory: ${{ env.WorkingDirectory }}
