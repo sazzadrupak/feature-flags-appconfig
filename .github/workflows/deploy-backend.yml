@@ -114,13 +114,32 @@ jobs:
         with:
           use-installer: true
 
-      # Try to download layer ARN from previous layer deployment
-      - name: Download Layer ARN artifact
+      # Try to download layer info from previous layer deployment
+      # Note: This will fail if no layer has been deployed yet, which is expected
+      - name: Download Latest Layer Info artifact
         uses: actions/download-artifact@v4
         with:
-          name: layer-arn-${{ matrix.environment }}
+          name: layer-info-${{ matrix.environment }}
           path: backend/
         continue-on-error: true
+
+      - name: Check for layer info file
+        id: check-layer-info
+        run: |
+          # Install jq if not available
+          if ! command -v jq &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+          
+          if [ -f "backend/layer-info/${{ matrix.environment }}.json" ]; then
+            echo "layer_info_exists=true" >> $GITHUB_OUTPUT
+            LAYER_ARN=$(jq -r '.layerArn' backend/layer-info/${{ matrix.environment }}.json)
+            echo "downloaded_layer_arn=$LAYER_ARN" >> $GITHUB_OUTPUT
+            echo "✅ Found layer info from artifact: $LAYER_ARN"
+          else
+            echo "layer_info_exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️  No layer info artifact found, will use matrix configuration"
+          fi
 
       - name: Install dependencies
         working-directory: ${{ env.WorkingDirectory }}
@@ -141,22 +160,26 @@ jobs:
       - name: Set Layer ARN
         working-directory: ${{ env.WorkingDirectory }}
         run: |
-          # Use the layer ARN from matrix configuration
-          MATRIX_LAYER_ARN="${{ matrix.layer_arn }}"
+          # Priority order: 1) Manual input, 2) Downloaded artifact, 3) Matrix configuration
           
-          # Override with manual version if specified
           if [ -n "${{ github.event.inputs.layer_version }}" ]; then
-            # Extract layer name and replace version number
+            # Extract layer name from matrix configuration and use manual version
+            MATRIX_LAYER_ARN="${{ matrix.layer_arn }}"
             LAYER_NAME=$(echo "$MATRIX_LAYER_ARN" | sed 's/:layer:\([^:]*\):.*/\1/')
             LAYER_ARN="arn:aws:lambda:${{ env.Region }}:$(aws sts get-caller-identity --query Account --output text):layer:${LAYER_NAME}:${{ github.event.inputs.layer_version }}"
             echo "🔄 Using manual layer version: $LAYER_ARN"
+          elif [ "${{ steps.check-layer-info.outputs.layer_info_exists }}" == "true" ]; then
+            # Use layer ARN from downloaded artifact
+            LAYER_ARN="${{ steps.check-layer-info.outputs.downloaded_layer_arn }}"
+            echo "📥 Using layer ARN from artifact: $LAYER_ARN"
           else
-            LAYER_ARN="$MATRIX_LAYER_ARN"
-            echo "📌 Using configured layer version: $LAYER_ARN"
+            # Fallback to matrix configuration
+            LAYER_ARN="${{ matrix.layer_arn }}"
+            echo "📌 Using matrix configuration layer ARN: $LAYER_ARN"
           fi
           
           echo "LAYER_ARN=$LAYER_ARN" >> $GITHUB_ENV
-          echo "Final Layer ARN: $LAYER_ARN"
+          echo "✅ Final Layer ARN: $LAYER_ARN"
 
       - name: SAM Build
         working-directory: ${{ env.WorkingDirectory }}

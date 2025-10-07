@@ -2,20 +2,20 @@ name: Deploy Lambda Layer
 
 on:
   workflow_dispatch:
-    # inputs:
-    #   environment:
-    #     description: 'Environment to deploy to'
-    #     required: true
-    #     default: 'dev'
-    #     type: choice
-    #     options:
-    #       - dev
-    #       - staging
-    #       - prod
-    #   version_tag:
-    #     description: 'Version tag for the layer (e.g., v1.2.3)'
-    #     required: false
-    #     default: ''
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      version_tag:
+        description: 'Version tag for the layer (e.g., v1.2.3)'
+        required: false
+        default: ''
   push:
     branches: [main]
     paths:
@@ -201,7 +201,7 @@ jobs:
       - name: Upload Layer Info artifact
         uses: actions/upload-artifact@v4
         with:
-          name: layer-info-${{ matrix.environment }}-${{ steps.set_version.outputs.version_tag }}
+          name: layer-info-${{ matrix.environment }}
           path: backend/layer-info/
           retention-days: 90
 
