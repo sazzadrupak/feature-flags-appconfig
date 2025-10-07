@@ -15,7 +15,7 @@ Resources:
     Properties:
       LayerName: !Sub "feature-flags-deps-${Environment}"
       Description: Dependencies for feature flags backend
-      ContentUri: nodejs/
+      ContentUri: ./
       CompatibleRuntimes:
         - nodejs18.x
         - nodejs20.x

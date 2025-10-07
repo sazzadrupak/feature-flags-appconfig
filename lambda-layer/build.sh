@@ -16,7 +16,7 @@ mkdir -p nodejs
 
 # Move node_modules to the correct location for Lambda layer
 echo "📦 Moving dependencies to layer structure..."
-mv node_modules nodejs/
+mv node_modules nodejs/node_modules
 
 # Verify the structure
 echo "📋 Layer structure:"
