@@ -4,15 +4,15 @@ echo "🏗️  Building Lambda Layer..."
 
 # Clean previous builds
 echo "🧹 Cleaning previous builds..."
-rm -rf nodejs node_modules
+rm -rf nodejs
+
+# Install dependencies in root first
+echo "📦 Installing dependencies..."
+npm install --production
 
 # Create the nodejs directory (required structure for Lambda layers)
 echo "📁 Creating layer structure..."
 mkdir -p nodejs
-
-# Install dependencies
-echo "📦 Installing dependencies..."
-npm install --production
 
 # Move node_modules to the correct location for Lambda layer
 echo "📦 Moving dependencies to layer structure..."

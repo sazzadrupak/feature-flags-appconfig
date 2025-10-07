@@ -123,6 +123,7 @@ jobs:
         working-directory: ${{ env.WorkingDirectory }}
         run: |
           echo "Building Lambda Layer for ${{ matrix.environment }}"
+          chmod +x build.sh
           ./build.sh
 
       - name: SAM Build
