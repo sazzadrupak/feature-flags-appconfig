@@ -5,10 +5,10 @@ on:
     branches: [main]
     paths:
       - 'lambda-layer/**'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'lambda-layer/**'
+  # pull_request:
+  #   branches: [main]
+  #   paths:
+  #     - 'lambda-layer/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -26,7 +26,13 @@ on:
         default: ''
 
 env:
-  AWS_REGION: us-east-1
+  CentralArtifactBucket: appconfig-central-artifact-bucket
+  MajorMinorVersion: multi-country-feature-flags-v0.1
+  ServiceName: multi-country-feature-flags-lambda-layer
+  Region: us-east-1
+  WorkingDirectory: lambda-layer
+  ApiVersion: v1
+  TemplateName: template.yaml
 
 jobs:
   deploy-layer:
@@ -59,12 +65,37 @@ jobs:
           cache: 'npm'
           cache-dependency-path: lambda-layer/package-lock.json
 
+      - name: Generate version number
+        run: |
+          ### Version number structure like <service-name>-v0.1.1
+          VERSION_NUMBER="$MajorMinorVersion.$RUN_NUMBER"
+          echo "VERSION=$VERSION_NUMBER" >> $GITHUB_ENV
+
+          if git ls-remote --exit-code --tags origin $VERSION_NUMBER ; then
+            echo "Version $VERSION_NUMBER has been built already, bybassing build phase!"
+            echo "version_exists=true" >> $GITHUB_ENV
+          else
+            echo "version_exists=false" >> $GITHUB_ENV
+          fi
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-            aws-region: us-east-1
+            aws-region: ${{ env.Region }}
             role-to-assume: arn:aws:iam::115555360667:role/feature-flag-repo
             role-session-name: GithubActionsSession
+
+      - name: Create S3 bucket if it doesn't exist
+        run: |
+          if ! aws s3api head-bucket --bucket "${{ env.CentralArtifactBucket }}" 2>/dev/null; then
+            echo "Creating S3 bucket: ${{ env.CentralArtifactBucket }}"
+            aws s3api create-bucket --bucket "${{ env.CentralArtifactBucket }}" --region "${{ env.Region }}"
+            aws s3api put-bucket-versioning --bucket "${{ env.CentralArtifactBucket }}" --versioning-configuration Status=Enabled
+          else
+            echo "S3 bucket ${{ env.CentralArtifactBucket }} already exists"
+          fi
 
       - name: Setup SAM CLI
         uses: aws-actions/setup-sam@v2
@@ -72,55 +103,72 @@ jobs:
           use-installer: true
 
       - name: Build Lambda Layer
-        working-directory: lambda-layer
+        working-directory: ${{ env.WorkingDirectory }}
         run: |
           echo "Building Lambda Layer for ${{ matrix.environment }}"
           ./build.sh
 
       - name: SAM Build
-        working-directory: lambda-layer
+        working-directory: ${{ env.WorkingDirectory }}
         run: |
-          sam build --use-container
+          sam build -t ${{ env.TemplateName }}
+      
+      - name: Output the version of this build to other jobs
+        id: set_version
+        run: |
+          echo "version_tag=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Package artifacts and publish
+        if: env.version_exists == 'false'
+        working-directory: ${{ env.WorkingDirectory }}
+        run: |
+          # Package and upload SAM artifacts
+          sam package --s3-bucket ${{ env.CentralArtifactBucket }} --s3-prefix feature-flags-api/${{ env.ServiceName }}/$VERSION --output-template-file deployment-$VERSION.yml
+          # Upload the deployment template
+          aws s3 cp deployment-$VERSION.yml s3://${{ env.CentralArtifactBucket }}/feature-flags-api/${{ env.ServiceName }}/$VERSION/deployment-$VERSION.yml
+      
+      - name: Tag this build
+        if: env.version_exists == 'false'
+        run: |
+          git config --local user.name "GitHub Actions"
+          git config --local user.email "action@github.com"
+          git tag -a $VERSION -m "created by Github Action"
+          git push origin $VERSION
+    
+      - name: Download deployment template (if version exists)
+        if: env.version_exists == 'true'
+        working-directory: ${{ env.WorkingDirectory }}
+        run: |
+          echo "Downloading existing template"
+          aws s3 cp s3://${{ env.CentralArtifactBucket }}/feature-flags-api/${{ env.ServiceName }}/$VERSION/deployment-$VERSION.yml ./deployment-$VERSION.yml
 
       - name: SAM Deploy
-        working-directory: lambda-layer
+        working-directory: ${{ env.WorkingDirectory }}
         run: |
           sam deploy \
+            --template-file deployment-$VERSION.yml \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
-            --stack-name feature-flags-layer-${{ matrix.environment }} \
+            --stack-name ${{ env.ServiceName }}-${{ matrix.environment }} \
             --parameter-overrides Environment=${{ matrix.environment }} \
             --capabilities CAPABILITY_IAM \
-            --region ${{ env.AWS_REGION }}
-
-      - name: Generate Version
-        id: version
-        run: |
-          if [ -n "${{ github.event.inputs.version_tag }}" ]; then
-            VERSION="${{ github.event.inputs.version_tag }}"
-          else
-            # Generate version from timestamp and short commit SHA
-            VERSION="v$(date +%Y%m%d)-$(echo ${{ github.sha }} | cut -c1-7)"
-          fi
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Generated version: $VERSION"
+            --region ${{ env.Region }}
 
       - name: Get Layer ARN and Version
         id: get-layer-info
-        working-directory: lambda-layer
+        working-directory: ${{ env.WorkingDirectory }}
         run: |
           LAYER_ARN=$(aws cloudformation describe-stacks \
-            --stack-name feature-flags-layer-${{ matrix.environment }} \
+            --stack-name ${{ env.ServiceName }}-${{ matrix.environment }} \
             --query 'Stacks[0].Outputs[?OutputKey==`LayerArn`].OutputValue' \
             --output text \
-            --region ${{ env.AWS_REGION }})
+            --region ${{ env.Region }})
           
           LAYER_VERSION=$(aws cloudformation describe-stacks \
-            --stack-name feature-flags-layer-${{ matrix.environment }} \
+            --stack-name ${{ env.ServiceName }}-${{ matrix.environment }} \
             --query 'Stacks[0].Outputs[?OutputKey==`LayerVersion`].OutputValue' \
             --output text \
-            --region ${{ env.AWS_REGION }})
+            --region ${{ env.Region }})
           
           echo "Layer ARN: $LAYER_ARN"
           echo "Layer Version: $LAYER_VERSION"
@@ -135,7 +183,7 @@ jobs:
           {
             "layerArn": "$LAYER_ARN",
             "layerVersion": "$LAYER_VERSION",
-            "deploymentVersion": "${{ env.VERSION }}",
+            "deploymentVersion": "$VERSION",
             "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "gitSha": "${{ github.sha }}"
           }
@@ -144,7 +192,7 @@ jobs:
       - name: Upload Layer Info artifact
         uses: actions/upload-artifact@v4
         with:
-          name: layer-info-${{ matrix.environment }}-${{ steps.version.outputs.version }}
+          name: layer-info-${{ matrix.environment }}-${{ steps.set_version.outputs.version_tag }}
           path: backend/layer-info/
           retention-days: 90
 

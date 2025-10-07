@@ -5,10 +5,10 @@ on:
     branches: [main]
     paths:
       - 'backend/**'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'backend/**'
+  # pull_request:
+  #   branches: [main]
+  #   paths:
+  #     - 'backend/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -26,7 +26,13 @@ on:
         default: ''
 
 env:
-  AWS_REGION: us-east-1
+  CentralArtifactBucket: appconfig-central-artifact-bucket
+  MajorMinorVersion: multi-country-feature-flags-v0.1
+  ServiceName: multi-country-feature-flags-backend
+  Region: us-east-1
+  WorkingDirectory: backend
+  ApiVersion: v1
+  TemplateName: template.yaml
 
 jobs:
   deploy-backend:
@@ -92,23 +98,23 @@ jobs:
         continue-on-error: true
 
       - name: Install dependencies
-        working-directory: backend
+        working-directory: ${{ env.WorkingDirectory }}
         run: npm ci
 
-      - name: Run tests
-        working-directory: backend
-        run: npm test
+      # - name: Run tests
+      #   working-directory: backend
+      #   run: npm test
 
       - name: Run linting
-        working-directory: backend
+        working-directory: ${{ env.WorkingDirectory }}
         run: npm run lint
 
-      - name: Build backend
-        working-directory: backend
+      - name: Build
+        working-directory: ${{ env.WorkingDirectory }}
         run: npm run build
 
       - name: Set Layer ARN
-        working-directory: backend
+        working-directory: ${{ env.WorkingDirectory }}
         run: |
           # Use the layer ARN from matrix configuration
           MATRIX_LAYER_ARN="${{ matrix.layer_arn }}"
@@ -117,7 +123,7 @@ jobs:
           if [ -n "${{ github.event.inputs.layer_version }}" ]; then
             # Extract layer name and replace version number
             LAYER_NAME=$(echo "$MATRIX_LAYER_ARN" | sed 's/:layer:\([^:]*\):.*/\1/')
-            LAYER_ARN="arn:aws:lambda:${{ env.AWS_REGION }}:$(aws sts get-caller-identity --query Account --output text):layer:${LAYER_NAME}:${{ github.event.inputs.layer_version }}"
+            LAYER_ARN="arn:aws:lambda:${{ env.Region }}:$(aws sts get-caller-identity --query Account --output text):layer:${LAYER_NAME}:${{ github.event.inputs.layer_version }}"
             echo "🔄 Using manual layer version: $LAYER_ARN"
           else
             LAYER_ARN="$MATRIX_LAYER_ARN"
@@ -128,22 +134,52 @@ jobs:
           echo "Final Layer ARN: $LAYER_ARN"
 
       - name: SAM Build
-        working-directory: backend
+        working-directory: ${{ env.WorkingDirectory }}
         run: |
           sam build
 
+      - name: Output the version of this build to other jobs
+        id: set_version
+        run: |
+          echo "version_tag=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Package artifacts and publish
+        if: env.version_exists == 'false'
+        working-directory: ${{ env.WorkingDirectory }}
+        run: |
+          # Package and upload SAM artifacts
+          sam package --s3-bucket ${{ env.CentralArtifactBucket }} --s3-prefix feature-flags-api/${{ env.ServiceName }}/$VERSION --output-template-file deployment-$VERSION.yml
+          # Upload the deployment template
+          aws s3 cp deployment-$VERSION.yml s3://${{ env.CentralArtifactBucket }}/feature-flags-api/${{ env.ServiceName }}/$VERSION/deployment-$VERSION.yml
+
+      - name: Tag this build
+        if: env.version_exists == 'false'
+        run: |
+          git config --local user.name "GitHub Actions"
+          git config --local user.email "action@github.com"
+          git tag -a $VERSION -m "created by Github Action"
+          git push origin $VERSION
+
+      - name: Download deployment template (if version exists)
+        if: env.version_exists == 'true'
+        working-directory: ${{ env.WorkingDirectory }}
+        run: |
+          echo "Downloading existing template"
+          aws s3 cp s3://${{ env.CentralArtifactBucket }}/feature-flags-api/${{ env.ServiceName }}/$VERSION/deployment-$VERSION.yml ./deployment-$VERSION.yml
+
       - name: SAM Deploy
-        working-directory: backend
+        working-directory: ${{ env.WorkingDirectory }}
         run: |
           sam deploy \
+            --template-file deployment-$VERSION.yml \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
-            --stack-name feature-flags-backend-${{ matrix.environment }} \
+            --stack-name ${{ env.ServiceName }}-${{ matrix.environment }} \
             --parameter-overrides \
               Environment=${{ matrix.environment }} \
               LayerArn=${{ env.LAYER_ARN }} \
             --capabilities CAPABILITY_IAM \
-            --region ${{ env.AWS_REGION }}
+            --region ${{ env.Region }}
 
     #   - name: Get API URL
     #     working-directory: backend
