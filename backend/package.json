@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "dev": "npm run build && npm run lint && npm run test"
   },
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
     "@aws-lambda-powertools/logger": "^2.27.0",
     "@aws-lambda-powertools/metrics": "^2.27.0",
     "@aws-sdk/client-appconfig": "^3.0.0",
@@ -25,9 +26,7 @@
     "@middy/http-cors": "^6.4.5",
     "@middy/http-json-body-parser": "^6.4.5",
     "@middy/http-response-serializer": "^6.4.5",
-    "@middy/validator": "^6.4.5"
-  },
-  "devDependencies": {
+    "@middy/validator": "^6.4.5",
     "@types/aws-lambda": "^8.10.119",
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
