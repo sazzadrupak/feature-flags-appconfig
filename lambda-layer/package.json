@@ -13,10 +13,10 @@
     "@aws-sdk/client-appconfig": "^3.0.0",
     "@aws-sdk/client-appconfigdata": "^3.0.0",
     "@aws-sdk/client-dynamodb": "^3.0.0",
-    "@middy/core": "^5.4.7",
-    "@middy/http-cors": "^5.4.7",
-    "@middy/http-json-body-parser": "^5.4.7",
-    "@middy/http-response-serializer": "^5.4.7",
-    "@middy/validator": "^5.4.7"
+    "@middy/core": "^4.7.0",
+    "@middy/http-cors": "^4.7.0",
+    "@middy/http-json-body-parser": "^4.7.0",
+    "@middy/http-response-serializer": "^4.7.0",
+    "@middy/validator": "^4.7.0"
   }
 }
