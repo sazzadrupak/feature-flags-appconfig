@@ -48,7 +48,7 @@ jobs:
         include:
           - environment: dev
             # Dev environment - latest layer version for development
-            layer_arn: arn:aws:lambda:us-east-1:115555360667:layer:feature-flags-deps-dev:8
+            layer_arn: arn:aws:lambda:us-east-1:115555360667:layer:feature-flags-deps-dev:9
           # - environment: staging  
           #   # Staging environment - stable tested layer version
           #   layer_arn: arn:aws:lambda:us-east-1:115555360667:layer:feature-flags-deps-staging:2
