@@ -47,9 +47,9 @@ jobs:
       matrix:
         include:
           - environment: dev
-            # Dev environment - latest layer version for development  
-            layer_arn: "" # Will be fetched dynamically
-          # - environment: staging  
+            # Dev environment - hardcoded layer version
+            layer_arn: arn:aws:lambda:us-east-1:115555360667:layer:feature-flags-deps-dev:10
+          # - environment: staging
           #   # Staging environment - stable tested layer version
           #   layer_arn: arn:aws:lambda:us-east-1:115555360667:layer:feature-flags-deps-staging:2
           # - environment: prod
@@ -114,33 +114,6 @@ jobs:
         with:
           use-installer: true
 
-      # Try to download layer info from previous layer deployment
-      # Note: This will fail if no layer has been deployed yet, which is expected
-      - name: Download Latest Layer Info artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: layer-info-${{ matrix.environment }}
-          path: backend/
-        continue-on-error: true
-
-      - name: Check for layer info file
-        id: check-layer-info
-        run: |
-          # Install jq if not available
-          if ! command -v jq &> /dev/null; then
-            sudo apt-get update && sudo apt-get install -y jq
-          fi
-          
-          if [ -f "backend/layer-info/${{ matrix.environment }}.json" ]; then
-            echo "layer_info_exists=true" >> $GITHUB_OUTPUT
-            LAYER_ARN=$(jq -r '.layerArn' backend/layer-info/${{ matrix.environment }}.json)
-            echo "downloaded_layer_arn=$LAYER_ARN" >> $GITHUB_OUTPUT
-            echo "✅ Found layer info from artifact: $LAYER_ARN"
-          else
-            echo "layer_info_exists=false" >> $GITHUB_OUTPUT
-            echo "⚠️  No layer info artifact found, will use matrix configuration"
-          fi
-
       - name: Install dependencies
         working-directory: ${{ env.WorkingDirectory }}
         run: npm ci
@@ -158,22 +131,10 @@ jobs:
         run: npm run build
 
       - name: Set Layer ARN
-        working-directory: ${{ env.WorkingDirectory }}
         run: |
-          # Get layer ARN from layer stack
-          LAYER_ARN=$(aws cloudformation describe-stacks \
-            --stack-name multi-country-feature-flags-lambda-layer-${{ matrix.environment }} \
-            --query 'Stacks[0].Outputs[?OutputKey==`LayerArn`].OutputValue' \
-            --output text \
-            --region ${{ env.Region }} 2>/dev/null || echo "")
-          
-          if [ -n "$LAYER_ARN" ]; then
-            echo "✅ Found layer ARN: $LAYER_ARN"
-          else
-            echo "❌ No layer found. Deploy layer first!"
-            exit 1
-          fi
-          
+          # Use hardcoded layer ARN from matrix
+          LAYER_ARN="${{ matrix.layer_arn }}"
+          echo "✅ Using hardcoded layer ARN: $LAYER_ARN"
           echo "LAYER_ARN=$LAYER_ARN" >> $GITHUB_ENV
 
       - name: SAM Build
