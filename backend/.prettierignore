@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.aws-sam/
+*.js.map
+*.d.ts
+coverage/
+.env
+.env.*
+*.log
+.DS_Store
+package-lock.json
+yarn.lock
