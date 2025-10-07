@@ -1,0 +1,38 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Lambda Layer for Feature Flags Dependencies
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  # Lambda Layer for dependencies
+  FeatureFlagsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "feature-flags-deps-${Environment}"
+      Description: Dependencies for feature flags backend
+      ContentUri: nodejs/
+      CompatibleRuntimes:
+        - nodejs18.x
+        - nodejs20.x
+      CompatibleArchitectures:
+        - x86_64
+        - arm64
+      RetentionPolicy: Retain
+
+Outputs:
+  LayerArn:
+    Description: ARN of the Lambda Layer
+    Value: !Ref FeatureFlagsLayer
+    Export:
+      Name: !Sub "${AWS::StackName}-LayerArn"
+  
+  LayerVersion:
+    Description: Version of the Lambda Layer
+    Value: !GetAtt FeatureFlagsLayer.Version
+    Export:
+      Name: !Sub "${AWS::StackName}-LayerVersion"

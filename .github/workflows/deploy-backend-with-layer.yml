@@ -1,0 +1,164 @@
+name: Deploy Backend with Layer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      layer_version:
+        description: 'Specific layer version to use (leave empty for latest)'
+        required: false
+        default: ''
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: write
+
+    # Environment-specific configurations
+    strategy:
+      matrix:
+        include:
+          - environment: dev
+            # Dev environment - latest layer version for development
+            layer_arn: arn:aws:lambda:us-east-1:115555360667:layer:feature-flags-deps-dev:LATEST
+          - environment: staging  
+            # Staging environment - stable tested layer version
+            layer_arn: arn:aws:lambda:us-east-1:115555360667:layer:feature-flags-deps-staging:2
+          - environment: prod
+            # Production environment - well-tested stable layer version  
+            layer_arn: arn:aws:lambda:us-east-1:115555360667:layer:feature-flags-deps-prod:1
+
+    steps:
+        # Only run for the requested environment (or dev by default)
+      - name: Check if should run for this environment
+        id: should-run
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" == "${{ matrix.environment }}" ]] || \
+             [[ "${{ github.event.inputs.environment }}" == "" && "${{ matrix.environment }}" == "dev" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+            aws-region: us-east-1
+            role-to-assume: arn:aws:iam::115555360667:role/feature-flag-repo
+            role-session-name: GithubActionsSession
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      # Try to download layer ARN from previous layer deployment
+      - name: Download Layer ARN artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: layer-arn-${{ matrix.environment }}
+          path: backend/
+        continue-on-error: true
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run tests
+        working-directory: backend
+        run: npm test
+
+      - name: Run linting
+        working-directory: backend
+        run: npm run lint
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Set Layer ARN
+        working-directory: backend
+        run: |
+          # Use the layer ARN from matrix configuration
+          MATRIX_LAYER_ARN="${{ matrix.layer_arn }}"
+          
+          # Override with manual version if specified
+          if [ -n "${{ github.event.inputs.layer_version }}" ]; then
+            # Extract layer name and replace version number
+            LAYER_NAME=$(echo "$MATRIX_LAYER_ARN" | sed 's/:layer:\([^:]*\):.*/\1/')
+            LAYER_ARN="arn:aws:lambda:${{ env.AWS_REGION }}:$(aws sts get-caller-identity --query Account --output text):layer:${LAYER_NAME}:${{ github.event.inputs.layer_version }}"
+            echo "🔄 Using manual layer version: $LAYER_ARN"
+          else
+            LAYER_ARN="$MATRIX_LAYER_ARN"
+            echo "📌 Using configured layer version: $LAYER_ARN"
+          fi
+          
+          echo "LAYER_ARN=$LAYER_ARN" >> $GITHUB_ENV
+          echo "Final Layer ARN: $LAYER_ARN"
+
+      - name: SAM Build
+        working-directory: backend
+        run: |
+          sam build
+
+      - name: SAM Deploy
+        working-directory: backend
+        run: |
+          sam deploy \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --stack-name feature-flags-backend-${{ matrix.environment }} \
+            --parameter-overrides \
+              Environment=${{ matrix.environment }} \
+              LayerArn=${{ env.LAYER_ARN }} \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.AWS_REGION }}
+
+    #   - name: Get API URL
+    #     working-directory: backend
+    #     run: |
+    #       API_URL=$(aws cloudformation describe-stacks \
+    #         --stack-name feature-flags-backend-${{ matrix.environment }} \
+    #         --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' \
+    #         --output text \
+    #         --region ${{ env.AWS_REGION }})
+          
+    #       echo "🌐 API Gateway URL: $API_URL"
+    #       echo "API_URL=$API_URL" >> $GITHUB_ENV
+
+    #   - name: Test API
+    #     run: |
+    #       echo "🧪 Testing API endpoint..."
+    #       # Add basic API tests here if needed
+    #       curl -f "${{ env.API_URL }}/feature-flags/US" || echo "API test failed - this might be expected for new deployments"

@@ -1,0 +1,168 @@
+name: Deploy Lambda Layer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lambda-layer/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lambda-layer/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      version_tag:
+        description: 'Version tag for the layer (e.g., v1.2.3)'
+        required: false
+        default: ''
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy-layer:
+    runs-on: ubuntu-latest
+    outputs:
+      layer-arn-dev: ${{ steps.get-layer-info.outputs.layer-arn-dev }}
+      layer-version-dev: ${{ steps.get-layer-info.outputs.layer-version-dev }}
+      layer-arn-staging: ${{ steps.get-layer-info.outputs.layer-arn-staging }}
+      layer-version-staging: ${{ steps.get-layer-info.outputs.layer-version-staging }}
+      layer-arn-prod: ${{ steps.get-layer-info.outputs.layer-arn-prod }}
+      layer-version-prod: ${{ steps.get-layer-info.outputs.layer-version-prod }}
+
+    # this is required for authenticating to AWS via the OIDC Provider we set up
+    permissions:
+      id-token: write
+      contents: write
+
+    strategy:
+      matrix:
+        environment: [dev]  # Add staging, prod as needed
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: lambda-layer/package-lock.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+            aws-region: us-east-1
+            role-to-assume: arn:aws:iam::115555360667:role/feature-flag-repo
+            role-session-name: GithubActionsSession
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: Build Lambda Layer
+        working-directory: lambda-layer
+        run: |
+          echo "Building Lambda Layer for ${{ matrix.environment }}"
+          ./build.sh
+
+      - name: SAM Build
+        working-directory: lambda-layer
+        run: |
+          sam build --use-container
+
+      - name: SAM Deploy
+        working-directory: lambda-layer
+        run: |
+          sam deploy \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --stack-name feature-flags-layer-${{ matrix.environment }} \
+            --parameter-overrides Environment=${{ matrix.environment }} \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Generate Version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version_tag }}" ]; then
+            VERSION="${{ github.event.inputs.version_tag }}"
+          else
+            # Generate version from timestamp and short commit SHA
+            VERSION="v$(date +%Y%m%d)-$(echo ${{ github.sha }} | cut -c1-7)"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Generated version: $VERSION"
+
+      - name: Get Layer ARN and Version
+        id: get-layer-info
+        working-directory: lambda-layer
+        run: |
+          LAYER_ARN=$(aws cloudformation describe-stacks \
+            --stack-name feature-flags-layer-${{ matrix.environment }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`LayerArn`].OutputValue' \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+          
+          LAYER_VERSION=$(aws cloudformation describe-stacks \
+            --stack-name feature-flags-layer-${{ matrix.environment }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`LayerVersion`].OutputValue' \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+          
+          echo "Layer ARN: $LAYER_ARN"
+          echo "Layer Version: $LAYER_VERSION"
+          
+          # Set outputs for this job
+          echo "layer-arn-${{ matrix.environment }}=$LAYER_ARN" >> $GITHUB_OUTPUT
+          echo "layer-version-${{ matrix.environment }}=$LAYER_VERSION" >> $GITHUB_OUTPUT
+          
+          # Save to environment files with version info
+          mkdir -p ../backend/layer-info
+          cat > ../backend/layer-info/${{ matrix.environment }}.json << EOF
+          {
+            "layerArn": "$LAYER_ARN",
+            "layerVersion": "$LAYER_VERSION",
+            "deploymentVersion": "${{ env.VERSION }}",
+            "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "gitSha": "${{ github.sha }}"
+          }
+          EOF
+
+      - name: Upload Layer Info artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: layer-info-${{ matrix.environment }}-${{ steps.version.outputs.version }}
+          path: backend/layer-info/
+          retention-days: 90
+
+      - name: Create Release (if tagged)
+        if: github.event.inputs.version_tag != ''
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: layer-${{ github.event.inputs.version_tag }}
+          release_name: Lambda Layer ${{ github.event.inputs.version_tag }}
+          body: |
+            Lambda Layer Release ${{ github.event.inputs.version_tag }}
+            
+            **Layer Information:**
+            - Environment: ${{ matrix.environment }}
+            - Layer ARN: ${{ steps.get-layer-info.outputs[format('layer-arn-{0}', matrix.environment)] }}
+            - Layer Version: ${{ steps.get-layer-info.outputs[format('layer-version-{0}', matrix.environment)] }}
+            - Git SHA: ${{ github.sha }}
+          draft: false
+          prerelease: false

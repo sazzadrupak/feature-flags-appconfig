@@ -1,0 +1,22 @@
+{
+  "name": "feature-flags-lambda-layer",
+  "version": "1.0.0",
+  "description": "Lambda layer for feature flags backend dependencies",
+  "main": "index.js",
+  "scripts": {
+    "build": "npm install --production",
+    "clean": "rm -rf node_modules nodejs"
+  },
+  "dependencies": {
+    "@aws-lambda-powertools/logger": "^2.27.0",
+    "@aws-lambda-powertools/metrics": "^2.27.0",
+    "@aws-sdk/client-appconfig": "^3.0.0",
+    "@aws-sdk/client-appconfigdata": "^3.0.0",
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@middy/core": "^6.4.5",
+    "@middy/http-cors": "^6.4.5",
+    "@middy/http-json-body-parser": "^6.4.5",
+    "@middy/http-response-serializer": "^6.4.5",
+    "@middy/validator": "^6.4.5"
+  }
+}

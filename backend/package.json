@@ -4,6 +4,8 @@
   "description": "Feature flags backend with AWS AppConfig",
   "scripts": {
     "build": "tsc",
+    "bundle": "node bundle.js",
+    "build:sam": "npm run bundle",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src --ext .ts",
@@ -31,6 +33,7 @@
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
+    "esbuild": "^0.25.10",
     "eslint": "^8.0.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-prettier": "^5.0.0",

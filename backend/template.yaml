@@ -7,6 +7,13 @@ Parameters:
     Type: String
     Default: dev
     AllowedValues: [dev, staging, prod]
+  LayerArn:
+    Type: String
+    Description: ARN of the Lambda Layer containing dependencies
+    Default: ""
+
+Conditions:
+  UseLayer: !Not [!Equals [!Ref LayerArn, ""]]
 
 Resources:
   # AppConfig Application
@@ -102,6 +109,10 @@ Resources:
       Handler: handlers/getFeatureFlags.handler
       Runtime: nodejs18.x
       Role: !GetAtt LambdaExecutionRole.Arn
+      Layers: !If
+        - UseLayer
+        - [!Ref LayerArn]
+        - !Ref 'AWS::NoValue'
       Environment:
         Variables:
           APPLICATION_ID: !Ref FeatureFlagsApplication
@@ -123,6 +134,10 @@ Resources:
       Handler: handlers/updateFeatureFlags.handler
       Runtime: nodejs18.x
       Role: !GetAtt LambdaExecutionRole.Arn
+      Layers: !If
+        - UseLayer
+        - [!Ref LayerArn]
+        - !Ref 'AWS::NoValue'
       Environment:
         Variables:
           APPLICATION_ID: !Ref FeatureFlagsApplication
