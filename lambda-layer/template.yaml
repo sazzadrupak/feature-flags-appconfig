@@ -32,7 +32,7 @@ Outputs:
       Name: !Sub "${AWS::StackName}-LayerArn"
   
   LayerVersion:
-    Description: Version of the Lambda Layer
-    Value: !GetAtt FeatureFlagsLayer.Version
+    Description: Version of the Lambda Layer (extracted from ARN)
+    Value: !Select [6, !Split [":", !Ref FeatureFlagsLayer]]
     Export:
       Name: !Sub "${AWS::StackName}-LayerVersion"
