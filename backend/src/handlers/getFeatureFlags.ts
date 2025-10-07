@@ -9,7 +9,7 @@ import {
   Context,
 } from 'aws-lambda';
 import { FeatureFlagsConfig, CountryFlags, ErrorResponse } from '../types';
-import { wrap } from '../lib/simple-wrapper';
+import { wrap } from '../lib/wrapper';
 
 const client = new AppConfigDataClient({ region: process.env.AWS_REGION });
 
