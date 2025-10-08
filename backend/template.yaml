@@ -98,6 +98,7 @@ Resources:
                 Action:
                   - appconfig:GetConfiguration
                   - appconfig:StartConfigurationSession
+                  - appconfig:GetLatestConfiguration
                   - appconfig:CreateHostedConfigurationVersion
                   - appconfig:StartDeployment
                 Resource: '*'
