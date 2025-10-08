@@ -97,6 +97,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - appconfig:GetConfiguration
+                  - appconfig:StartConfigurationSession
                   - appconfig:CreateHostedConfigurationVersion
                   - appconfig:StartDeployment
                 Resource: '*'
