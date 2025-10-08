@@ -8,7 +8,7 @@ import {
   APIGatewayProxyResult,
   Context,
 } from 'aws-lambda';
-import { FeatureFlagsConfig, CountryFlags, ErrorResponse } from '../types';
+import { FeatureFlagsConfig, ErrorResponse } from '../types';
 import { wrap } from '../lib/wrapper';
 
 const client = new AppConfigDataClient({ region: process.env.AWS_REGION });
@@ -62,7 +62,7 @@ const getFeatureFlagsHandler = async (
     const configData: FeatureFlagsConfig = JSON.parse(configString);
 
     // Extract country-specific flags
-    const countryFlags: CountryFlags = configData.flags[country] || {};
+    const countryFlags = configData[country] || {};
 
     return {
       statusCode: 200,
@@ -70,10 +70,7 @@ const getFeatureFlagsHandler = async (
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
       },
-      body: JSON.stringify({
-        country,
-        flags: countryFlags,
-      }),
+      body: JSON.stringify(countryFlags),
     };
   } catch (error) {
     console.error('Error getting feature flags:', error);

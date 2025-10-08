@@ -1,36 +1,40 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/**
+ * Individual feature flag configuration
+ */
 export interface FeatureFlag {
-  name: string;
   enabled: boolean;
-  variants?: {
-    [key: string]: {
-      enabled: boolean;
-      [key: string]: any;
-    };
-  };
 }
 
-export interface FeatureFlagsConfig {
-  flags: {
-    [country: string]: {
-      [flagName: string]: FeatureFlag;
-    };
-  };
-  values: {
-    [country: string]: {
-      [flagName: string]: {
-        enabled: boolean;
-        variant?: string;
-        [key: string]: any;
-      };
-    };
-  };
-  version: string;
-}
-
+/**
+ * Country-specific feature flags configuration
+ */
 export interface CountryFlags {
-  [flagName: string]: FeatureFlag;
+  allow_mobile_payments: FeatureFlag;
+  default_payments_per_region: FeatureFlag;
+}
+
+/**
+ * ISO 3166 Alpha-3 country code type
+ * Represents any valid 3-letter country code
+ */
+export type CountryCode = string;
+
+/**
+ * Complete AppConfig feature flags structure
+ * Maps any ISO 3166 country codes to their feature flag configurations
+ */
+export interface FeatureFlagsConfig {
+  [countryCode: CountryCode]: CountryFlags;
+}
+
+/**
+ * Response structure for getting feature flags
+ * Includes the configuration and available countries
+ */
+export interface GetFeatureFlagsResponse {
+  config: FeatureFlagsConfig;
 }
 
 export interface ApiResponse {
@@ -52,5 +56,11 @@ export interface UserInfo {
 }
 
 export interface UpdateFeatureFlagsRequest {
-  [flagName: string]: FeatureFlag;
+  allow_mobile_payments?: FeatureFlag;
+  default_payments_per_region?: FeatureFlag;
 }
+
+/**
+ * Utility type for partial country flag updates
+ */
+export type PartialCountryFlags = Partial<CountryFlags>;
